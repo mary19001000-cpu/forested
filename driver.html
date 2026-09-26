@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#3a1a00">
+<title>درع الغابة — سائق</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Tahoma,sans-serif}
+body{background:#0a0a0a;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:#111;padding:10px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #FF6F00}
+header h1{font-size:1.1rem;color:#FF6F00}
+#logoutBtn{background:#d32f2f;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:bold}
+.driver-info{background:#1a2a1a;padding:8px 12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;font-size:0.8rem;gap:8px;flex-wrap:wrap}
+.driver-info .name{color:#4CAF50;font-weight:bold}
+.driver-info .status{padding:3px 10px;border-radius:12px;font-size:0.7rem;font-weight:bold;flex-shrink:0}
+.s-ready{background:#4CAF50;color:#fff}
+.s-route{background:#2196F3;color:#fff}
+.s-arrived{background:#FF9800;color:#fff}
+#map{flex:1;background:#1a1a1a;min-height:35vh}
+.bottom-panel{background:#111;border-top:2px solid #333;padding:8px;max-height:42vh;overflow-y:auto}
+.panel-title{color:#FF6F00;font-weight:bold;font-size:0.85rem;margin-bottom:6px}
+.fire-item{background:#1a1a1a;border-right:3px solid #f44336;border-radius:6px;padding:8px;margin-bottom:6px;cursor:pointer;transition:.2s}
+.fire-item:hover{background:#2a2a2a}
+.fire-item.selected{background:#1a2a4a;border-right-color:#2196F3}
+.fire-item .row{display:flex;justify-content:space-between;font-size:0.8rem;padding:2px 0;gap:8px}
+.fire-item .row .label{color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fire-item .row .val{color:#fff;font-weight:bold;flex-shrink:0}
+.fire-item .actions{display:flex;gap:6px;margin-top:6px}
+.fire-item .actions button{flex:1;padding:6px;border:none;border-radius:4px;cursor:pointer;font-size:0.75rem;font-weight:bold;color:#fff}
+.btn-nav{background:#2196F3}
+.btn-going{background:#FF6F00}
+.btn-done{background:#4CAF50}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;justify-content:center;align-items:center;z-index:1000;padding:15px}
+.modal-overlay.active{display:flex}
+.modal-box{background:#1a1a1a;border:2px solid #FF6F00;border-radius:12px;padding:20px;width:100%;max-width:400px;max-height:90vh;overflow-y:auto}
+.modal-title{color:#FF6F00;font-size:1.15rem;margin-bottom:14px;text-align:center;font-weight:bold}
+input{width:100%;padding:10px;margin:6px 0;border-radius:6px;border:1px solid #444;background:#222;color:#fff;font-size:0.95rem;font-family:inherit}
+input:focus{outline:2px solid #FF6F00}
+.modal-btn{width:100%;padding:12px;border:none;border-radius:6px;background:#FF6F00;color:#fff;font-weight:bold;cursor:pointer;margin-top:8px;font-size:0.9rem}
+.modal-btn:hover{background:#e65100}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:12px 20px;border-radius:6px;font-size:0.9rem;z-index:2000;display:none;max-width:90%;text-align:center}
+.toast.show{display:block}
+.toast.success{background:#2e7d32}
+.toast.error{background:#c62828}
+.toast.info{background:#1565c0}
+.route-info{background:#0d1b3e;border:1px solid #2196F3;border-radius:6px;padding:8px;margin-bottom:8px;font-size:0.8rem}
+.route-info .row{display:flex;justify-content:space-between;padding:2px 0;gap:8px}
+.route-info .row .label{color:#7986cb}
+.route-info .row .val{color:#fff;font-weight:bold;text-align:left}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚒 درع الغابة — سائق</h1>
+  <button id="logoutBtn" onclick="logout()">🚪 خروج</button>
+</header>
+
+<div class="driver-info">
+  <div><span class="name" id="dName">--</span> <span style="color:#888" id="dPhone">--</span></div>
+  <div class="status s-ready" id="dStatus">🟢 جاهز</div>
+</div>
+
+<div id="map"></div>
+
+<div class="bottom-panel">
+  <div id="routeInfoBox"></div>
+  <div class="panel-title">🔥 الحرائق القريبة منك</div>
+  <div id="firesList">⏳ جاري التحميل...</div>
+</div>
+
+<div class="modal-overlay" id="profileModal">
+  <div class="modal-box">
+    <div class="modal-title">👤 معلومات السائق</div>
+    <p style="color:#888;font-size:0.85rem;text-align:center;margin-bottom:12px">مطلوبة أول مرة فقط</p>
+    <input type="text" id="pName" placeholder="اسمك الكامل">
+    <input type="tel" id="pPhone" placeholder="رقم هاتفك" dir="ltr">
+    <button class="modal-btn" onclick="saveProfile()">💾 حفظ والمتابعة</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+if (localStorage.getItem('fs_session') !== 'active') location.replace('index.html');
+if (localStorage.getItem('fs_role') !== 'crew') location.replace('index.html');
+
+var firebaseConfig = {
+  apiKey: "AIzaSyBIiA-JYDCM8Wum1FymaTjrQYvafg61iTo",
+  authDomain: "forest-shield-syria.firebaseapp.com",
+  projectId: "forest-shield-syria",
+  storageBucket: "forest-shield-syria.firebasestorage.app",
+  messagingSenderId: "882990548445",
+  appId: "1:882990548445:web:9336952581fd285d82a234"
+};
+var auth, db, myUid;
+try {
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  auth.onAuthStateChanged(function(u){ if(u) myUid = u.uid; });
+} catch(e) { console.error(e); }
+
+var map, baseLayers = {};
+var currentLat = null, currentLng = null;
+var userMarker = null, accuracyCircle = null;
+var reports = [], selectedFireId = null;
+var routeLine = null;
+var myStatus = 'جاهز';
+var myProfile = {name:'', phone:''};
+var targetFireId = null;
+var locationWatchId = null;
+var fireMarkers = {};
+
+var DEFAULT_STATIONS = [
+  { name:'دمشق', lat:33.5138, lng:36.2765 },
+  { name:'ريف دمشق', lat:33.5714, lng:36.4028 },
+  { name:'حلب', lat:36.2023, lng:37.1345 },
+  { name:'حمص', lat:34.7268, lng:36.7130 },
+  { name:'حماة', lat:35.1318, lng:36.7578 },
+  { name:'اللاذقية', lat:35.5198, lng:35.7797 },
+  { name:'طرطوس', lat:34.8897, lng:35.8866 }
+];
+
+function toRad(d){return d*Math.PI/180}
+function haversine(lat1,lng1,lat2,lng2){
+  var R=6371, dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function toast(msg,type){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show'+(type?' '+type:'');
+  setTimeout(function(){t.className='toast'},4000);
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+
+function checkProfile(){
+  var saved = localStorage.getItem('fs_driver_profile');
+  if(saved){
+    try{
+      myProfile = JSON.parse(saved);
+      document.getElementById('dName').textContent = myProfile.name;
+      document.getElementById('dPhone').textContent = myProfile.phone;
+      startLocationTracking();
+    } catch(e){ showProfileModal(); }
+  } else {
+    showProfileModal();
+  }
+}
+function showProfileModal(){ document.getElementById('profileModal').classList.add('active'); }
+function saveProfile(){
+  var name = document.getElementById('pName').value.trim();
+  var phone = document.getElementById('pPhone').value.trim();
+  if(!name){ toast('❌ أدخل اسمك','error'); return; }
+  if(!phone){ toast('❌ أدخل رقم هاتفك','error'); return; }
+  myProfile = {name:name, phone:phone};
+  localStorage.setItem('fs_driver_profile', JSON.stringify(myProfile));
+  document.getElementById('dName').textContent = name;
+  document.getElementById('dPhone').textContent = phone;
+  document.getElementById('profileModal').classList.remove('active');
+  toast('✅ مرحباً '+name,'success');
+  startLocationTracking();
+}
+
+function initMap(){
+  baseLayers = {
+    street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OSM', maxZoom:19 }),
+    satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution:'© Esri', maxZoom:19 })
+  };
+  map = L.map('map', {tap:false, layers:[baseLayers.street]}).setView([34.8, 38.0], 7);
+  DEFAULT_STATIONS.forEach(function(s){
+    var icon = L.divIcon({
+      html:'<div style="background:#ff6f00;width:16px;height:16px;border-radius:50%;border:2px solid #fff;font-size:9px;display:flex;align-items:center;justify-content:center">🚒</div>',
+      iconSize:[16,16]
+    });
+    L.marker([s.lat,s.lng],{icon:icon}).bindPopup('🚒 '+esc(s.name)).addTo(map);
+  });
+  listenReports();
+}
+
+function loadReports(){
+  Object.keys(fireMarkers).forEach(function(k){ map.removeLayer(fireMarkers[k]); });
+  fireMarkers = {};
+  var active = reports.filter(function(r){ return r.status !== 'تم الإخماد'; });
+  active.forEach(function(r){
+    var color = r.status==='جديد'?'#f44336':r.status==='قيد المعالجة'?'#FF9800':'#4CAF50';
+    var icon = L.divIcon({
+      html:'<div style="background:'+color+';width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 12px '+color+';"></div>',
+      iconSize:[18,18]
+    });
+    var marker = L.marker([r.lat,r.lng],{icon:icon}).addTo(map);
+    marker.on('click', function(){ selectFire(r.id); });
+    fireMarkers[r.id] = marker;
+  });
+  renderFiresList();
+}
+
+function renderFiresList(){
+  var list = document.getElementById('firesList');
+  if(!currentLat || !currentLng){ list.innerHTML = '📍 جاري تحديد موقعك...'; return; }
+  var active = reports.filter(function(r){ return r.status !== 'تم الإخماد'; });
+  active.forEach(function(r){ r._dist = haversine(currentLat, currentLng, r.lat, r.lng); });
+  active.sort(function(a,b){ return a._dist - b._dist; });
+  if(active.length===0){ list.innerHTML = '<div style="color:#666;text-align:center;padding:10px">✅ لا توجد حرائق نشطة</div>'; return; }
+  var html = '';
+  active.slice(0, 8).forEach(function(r){
+    var sel = r.id===selectedFireId ? ' selected' : '';
+    html += '<div class="fire-item'+sel+'" onclick="selectFire('+r.id+')">';
+    html += '<div class="row"><span class="label">🔥 '+esc(r.type||'حريق')+'</span><span class="val" style="color:#f44336">'+esc(r.severity||'')+'</span></div>';
+    html += '<div class="row"><span class="label">📍 '+esc(r.location||'-')+'</span><span class="val">'+r._dist.toFixed(2)+' كم</span></div>';
+    html += '<div class="actions">';
+    html += '<button class="btn-nav" onclick="event.stopPropagation();navigateTo('+r.id+')">🗺️ ملاحة</button>';
+    if(targetFireId === r.id && myStatus === 'في الطريق'){
+      html += '<button class="btn-done" onclick="event.stopPropagation();arrived()">✅ وصلت</button>';
+    } else if(targetFireId === r.id && myStatus === 'وصل'){
+      html += '<button class="btn-done" onclick="event.stopPropagation();doneMission()">🏁 انتهيت</button>';
+    } else {
+      html += '<button class="btn-going" onclick="event.stopPropagation();goToFire('+r.id+')">🚒 أنا في الطريق</button>';
+    }
+    html += '</div></div>';
+  });
+  list.innerHTML = html;
+}
+
+function selectFire(id){
+  selectedFireId = id;
+  var r = reports.find(function(x){return x.id===id});
+  if(r && map) map.flyTo([r.lat,r.lng], 13);
+  renderFiresList();
+}
+
+function navigateTo(id){
+  var r = reports.find(function(x){return x.id===id});
+  if(!r){ toast('❌ البلاغ غير موجود','error'); return; }
+  if(!currentLat || !currentLng){ toast('❌ انتظر تحديد موقعك','error'); return; }
+  selectedFireId = id;
+  toast('🗺️ جاري حساب المسار...','info');
+  var url = 'https://router.project-osrm.org/route/v1/driving/'+currentLng+','+currentLat+';'+r.lng+','+r.lat+'?overview=full&geometries=geojson';
+  fetch(url).then(function(res){ return res.json(); }).then(function(data){
+    if(!data.routes || !data.routes[0]) throw new Error('لا يوجد مسار');
+    var route = data.routes[0];
+    var coords = route.geometry.coordinates.map(function(c){ return [c[1], c[0]]; });
+    if(routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords, {color:'#2196F3', weight:5, opacity:0.8}).addTo(map);
+    map.fitBounds(routeLine.getBounds(), {padding:[40,40]});
+    var distKm = (route.distance/1000).toFixed(2);
+    var etaMin = Math.ceil(route.duration/60);
+    document.getElementById('routeInfoBox').innerHTML =
+      '<div class="route-info">'+
+      '<div class="row"><span class="label">🎯 الهدف</span><span class="val">'+esc(r.location)+'</span></div>'+
+      '<div class="row"><span class="label">📏 المسافة</span><span class="val">'+distKm+' كم</span></div>'+
+      '<div class="row"><span class="label">⏱️ الوقت المتوقع</span><span class="val">'+etaMin+' دقيقة</span></div>'+
+      '</div>';
+    toast('✅ تم رسم المسار','success');
+  }).catch(function(e){
+    var dist = haversine(currentLat, currentLng, r.lat, r.lng);
+    document.getElementById('routeInfoBox').innerHTML =
+      '<div class="route-info">'+
+      '<div class="row"><span class="label">🎯 الهدف</span><span class="val">'+esc(r.location)+'</span></div>'+
+      '<div class="row"><span class="label">📏 المسافة (تقديري)</span><span class="val">'+dist.toFixed(2)+' كم</span></div>'+
+      '<div class="row"><span class="label">⏱️ الوقت (تقديري)</span><span class="val">'+Math.ceil(dist/40*60)+' دقيقة</span></div>'+
+      '</div>';
+    toast('⚠️ تم استخدام المسافة التقديرية','info');
+  });
+}
+
+function goToFire(id){
+  targetFireId = id;
+  myStatus = 'في الطريق';
+  updateStatusUI();
+  navigateTo(id);
+  updateDriverInFirestore();
+  toast('🚒 تم الإعلان: أنت في الطريق','success');
+}
+
+function arrived(){
+  myStatus = 'وصل';
+  updateStatusUI();
+  updateDriverInFirestore();
+  toast('✅ تم الإعلان: وصلت للموقع','success');
+}
+
+function doneMission(){
+  myStatus = 'جاهز';
+  targetFireId = null;
+  updateStatusUI();
+  updateDriverInFirestore();
+  if(routeLine){ map.removeLayer(routeLine); routeLine = null; }
+  document.getElementById('routeInfoBox').innerHTML = '';
+  toast('🏁 انتهت المهمة','success');
+}
+
+function updateStatusUI(){
+  var el = document.getElementById('dStatus');
+  var map2 = { 'جاهز':'🟢 جاهز', 'في الطريق':'🔵 في الطريق', 'وصل':'🟠 وصل' };
+  el.textContent = map2[myStatus] || myStatus;
+  el.className = 'status ' + (myStatus==='جاهز'?'s-ready':myStatus==='في الطريق'?'s-route':'s-arrived');
+}
+
+function startLocationTracking(){
+  if(!navigator.geolocation){ toast('❌ GPS غير مدعوم','error'); return; }
+  if(locationWatchId) navigator.geolocation.clearWatch(locationWatchId);
+  locationWatchId = navigator.geolocation.watchPosition(function(pos){
+    currentLat = pos.coords.latitude;
+    currentLng = pos.coords.longitude;
+    var acc = pos.coords.accuracy;
+    if(userMarker){ userMarker.setLatLng([currentLat, currentLng]); }
+    else {
+      var icon = L.divIcon({
+        html:'<div style="background:#FF6F00;width:22px;height:22px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 20px #FF6F00;display:flex;align-items:center;justify-content:center;font-size:11px">🚒</div>',
+        iconSize:[22,22]
+      });
+      userMarker = L.marker([currentLat, currentLng], {icon:icon}).addTo(map);
+    }
+    if(accuracyCircle){ accuracyCircle.setLatLng([currentLat, currentLng]); accuracyCircle.setRadius(acc); }
+    else { accuracyCircle = L.circle([currentLat,currentLng],{radius:acc, color:'#FF6F00', fillOpacity:0.08}).addTo(map); }
+    if(!map._centered){ map.flyTo([currentLat,currentLng], 13); map._centered = true; }
+    updateDriverInFirestore();
+    renderFiresList();
+  }, function(err){
+    toast('❌ فشل تحديد الموقع','error');
+  }, {enableHighAccuracy:true, timeout:20000, maximumAge:5000});
+}
+
+function updateDriverInFirestore(){
+  if(!myUid || !myProfile.name) return;
+  var data = {
+    uid: myUid,
+    name: myProfile.name,
+    phone: myProfile.phone,
+    lat: currentLat,
+    lng: currentLng,
+    status: myStatus,
+    targetFireId: targetFireId,
+    updatedAt: new Date().toISOString()
+  };
+  db.collection('drivers').doc(myUid).set(data, {merge:true}).catch(function(e){ console.warn(e); });
+}
+
+function listenReports(){
+  db.collection('reports').onSnapshot(function(snap){
+    reports = [];
+    snap.forEach(function(doc){ reports.push(doc.data()); });
+    loadReports();
+    if(window._lastReportCount !== undefined && reports.length > window._lastReportCount){
+      var newest = reports[reports.length-1];
+      if(newest && currentLat && currentLng){
+        var d = haversine(currentLat,currentLng,newest.lat,newest.lng);
+        if(d < 30) showNotification('🚨 حريق جديد', newest.location + ' ('+d.toFixed(1)+' كم)', newest);
+      }
+    }
+    window._lastReportCount = reports.length;
+  });
+}
+
+function showNotification(title, body, report){
+  if(!('Notification' in window)) return;
+  if(Notification.permission !== 'granted') return;
+  try {
+    var n = new Notification(title, { body: body, icon:'assets/icon-192.png', tag:'fire-'+report.id, requireInteraction:true });
+    n.onclick = function(){ window.focus(); selectFire(report.id); };
+  } catch(e) {}
+}
+
+function logout(){
+  if(!confirm('تسجيل الخروج؟')) return;
+  if(locationWatchId) navigator.geolocation.clearWatch(locationWatchId);
+  if(myUid){
+    db.collection('drivers').doc(myUid).delete().catch(function(){});
+  }
+  auth.signOut().then(function(){
+    ['fs_session','fs_auth','fs_uid','fs_email','fs_role','fs_name','fs_driver_profile'].forEach(function(k){localStorage.removeItem(k)});
+    location.replace('index.html');
+  });
+}
+
+window.addEventListener('load', function(){
+  initMap();
+  setTimeout(function(){
+    if('Notification' in window && Notification.permission === 'default'){
+      Notification.requestPermission();
+    }
+  }, 3000);
+  setTimeout(checkProfile, 1000);
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('./sw.js').catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
